@@ -1,12 +1,19 @@
-import { $, $$, redraw, once, setVar } from './util.js';
+import { $, redraw, once } from './util.js';
+import { nodeToSvg, loadSvgImage, rasterize } from './render.js';
+import { createPngEncoder } from './png.js';
 
 const vscode = acquireVsCodeApi();
 const windowNode = $('#window');
 const snippetContainerNode = $('#snippet-container');
+const shutterNode = $('#save');
 
 const flashFx = $('#flash-fx');
 
 const SNAP_SCALE = 2;
+
+// To put an image on the clipboard Chromium decodes it inside the webview's process, and VS
+// Code's webview crashes doing so somewhere above 160M pixels. The host copies larger images.
+const MAX_CLIPBOARD_PIXELS = 1 << 27;
 
 export const cameraFlashAnimation = async () => {
   flashFx.style.display = 'block';
@@ -17,37 +24,73 @@ export const cameraFlashAnimation = async () => {
   flashFx.style.opacity = '1';
 };
 
-export const takeSnap = async (config) => {
-  windowNode.style.resize = 'none';
-  if (config.transparentBackground || config.target === 'window') {
-    setVar('container-background-color', 'transparent');
-  }
+const snapTarget = (config) => (config.target === 'container' ? snippetContainerNode : windowNode);
 
-  const target = config.target === 'container' ? snippetContainerNode : windowNode;
-
-  const url = await domtoimage.toPng(target, {
-    bgColor: 'transparent',
-    scale: SNAP_SCALE,
-    postProcess: (node) => {
-      $$('#snippet-container, #snippet, .line, .line-code span', node).forEach(
-        (span) => (span.style.width = 'unset')
-      );
-      $$('.line-code', node).forEach((span) => (span.style.width = '100%'));
-    }
+const renderPng = async (config) => {
+  const target = snapTarget(config);
+  const overrides =
+    config.transparentBackground || config.target === 'window'
+      ? { '--container-background-color': 'transparent' }
+      : {};
+  const { svg, width, height } = await nodeToSvg(target, {
+    overrides,
+    extraCss: '#window { resize: none !important; }'
   });
+  const img = await loadSvgImage(svg);
+  const encoder = createPngEncoder(Math.ceil(width * SNAP_SCALE), Math.ceil(height * SNAP_SCALE));
+  await rasterize(img, { width, height, scale: SNAP_SCALE }, (rgba, _, rows) =>
+    encoder.addRows(rgba, rows)
+  );
+  return encoder.finish();
+};
 
-  const data = url.slice(url.indexOf(',') + 1);
-  if (config.shutterAction === 'copy') {
-    const binary = atob(data);
-    const array = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
-    const blob = new Blob([array], { type: 'image/png' });
-    navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-    cameraFlashAnimation();
-  } else {
-    vscode.postMessage({ type: config.shutterAction, data });
+const toBytes = async (png) => new Uint8Array(await (await png).arrayBuffer());
+
+const copyPng = async (png) => {
+  try {
+    // Handing over the pending blob lets the clipboard request start while still focused.
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+  } catch (_) {
+    // Older Chromium only accepts resolved blobs in a ClipboardItem.
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': await png })]);
   }
+};
 
-  windowNode.style.resize = 'horizontal';
-  setVar('container-background-color', config.backgroundColor);
+let snapId = 0;
+let busy = false;
+
+export const takeSnap = async (config) => {
+  if (busy) return;
+  busy = true;
+  // Only signal work in progress when it is long enough to notice.
+  const busyTimer = setTimeout(() => shutterNode.classList.add('busy'), 200);
+  const id = ++snapId;
+  try {
+    if (config.shutterAction === 'copy') {
+      const { width, height } = snapTarget(config).getBoundingClientRect();
+      if (Math.ceil(width) * Math.ceil(height) * SNAP_SCALE ** 2 <= MAX_CLIPBOARD_PIXELS) {
+        await copyPng(renderPng(config));
+      } else {
+        const data = await toBytes(renderPng(config));
+        vscode.postMessage({ type: 'copy', data }, [data.buffer]);
+      }
+      cameraFlashAnimation();
+    } else {
+      // The host opens the save dialog right away; the image follows once it is rendered.
+      vscode.postMessage({ type: 'save', id });
+      cameraFlashAnimation();
+      try {
+        const data = await toBytes(renderPng(config));
+        vscode.postMessage({ type: 'image', id, data }, [data.buffer]);
+      } catch (err) {
+        vscode.postMessage({ type: 'image', id, error: String((err && err.message) || err) });
+      }
+    }
+  } catch (err) {
+    vscode.postMessage({ type: 'error', message: String((err && err.message) || err) });
+  } finally {
+    clearTimeout(busyTimer);
+    shutterNode.classList.remove('busy');
+    busy = false;
+  }
 };

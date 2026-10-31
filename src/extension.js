@@ -3,7 +3,8 @@
 const vscode = require('vscode');
 const path = require('path');
 const { homedir } = require('os');
-const { readHtml, writeFile, getSettings } = require('./util');
+const { readHtml, getSettings } = require('./util');
+const { copyPngWithSystemTools } = require('./clipboard');
 
 const getConfig = () => {
   const editorSettings = getSettings('editor', ['fontLigatures', 'tabSize']);
@@ -61,13 +62,42 @@ const createPanel = async (context) => {
 };
 
 let lastUsedImageUri = vscode.Uri.file(path.resolve(homedir(), 'Desktop/code.png'));
-const saveImage = async (data) => {
-  const uri = await vscode.window.showSaveDialog({
-    filters: { Images: ['png'] },
-    defaultUri: lastUsedImageUri
-  });
+let saveDialogOpen = false;
+
+// `image` settles with the webview's `{ data }` or `{ error }`; the webview renders while the
+// user is still picking a file name.
+const saveImage = async (image) => {
+  if (saveDialogOpen) return;
+  saveDialogOpen = true;
+  let uri;
+  try {
+    uri = await vscode.window.showSaveDialog({
+      filters: { Images: ['png'] },
+      defaultUri: lastUsedImageUri
+    });
+  } finally {
+    saveDialogOpen = false;
+  }
+  if (!uri) return;
   lastUsedImageUri = uri;
-  uri && writeFile(uri.fsPath, Buffer.from(data, 'base64'));
+  const { data, error } = await image;
+  if (error) throw new Error(error);
+  await vscode.workspace.fs.writeFile(uri, data);
+};
+
+// The webview hands over images too large for its own clipboard API.
+const copyLargeImage = async (context, data) => {
+  // A remote extension host would fill the remote machine's clipboard instead.
+  if (vscode.env.remoteName && context.extension.extensionKind !== vscode.ExtensionKind.UI) {
+    throw new Error('This image is too large for the clipboard here, use Save instead.');
+  }
+  await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: 'CodeSnap 📸: Copying a large image to the clipboard...'
+    },
+    () => copyPngWithSystemTools(data)
+  );
 };
 
 const hasOneSelection = (selections) =>
@@ -83,14 +113,25 @@ const runCommand = async (context) => {
     panel.webview.postMessage({ type: 'update', ...getConfig() });
   };
 
-  const flash = () => panel.webview.postMessage({ type: 'flash' });
+  const pendingImages = new Map();
 
-  panel.webview.onDidReceiveMessage(async ({ type, data }) => {
-    if (type === 'save') {
-      flash();
-      await saveImage(data);
-    } else {
-      vscode.window.showErrorMessage(`CodeSnap 📸: Unknown shutterAction "${type}"`);
+  panel.webview.onDidReceiveMessage(async ({ type, id, ...message }) => {
+    try {
+      if (type === 'save') {
+        await saveImage(new Promise((resolve) => pendingImages.set(id, resolve)));
+      } else if (type === 'image') {
+        const resolve = pendingImages.get(id);
+        pendingImages.delete(id);
+        if (resolve) resolve(message);
+      } else if (type === 'copy') {
+        await copyLargeImage(context, message.data);
+      } else if (type === 'error') {
+        throw new Error(message.message);
+      } else {
+        vscode.window.showErrorMessage(`CodeSnap 📸: Unknown shutterAction "${type}"`);
+      }
+    } catch (err) {
+      vscode.window.showErrorMessage(`CodeSnap 📸: ${err.message}`);
     }
   });
 

@@ -1,6 +1,6 @@
 import { $, $$, setVar, throttle } from './util.js';
 import { pasteCode } from './code.js';
-import { takeSnap, cameraFlashAnimation } from './snap.js';
+import { takeSnap } from './snap.js';
 
 const navbarNode = $('#navbar');
 const windowControlsNode = $('#window-controls');
@@ -116,8 +116,6 @@ window.addEventListener('message', ({ data: { type, ...cfg } }) => {
     }
 
     document.execCommand('paste');
-  } else if (type === 'flash') {
-    cameraFlashAnimation();
   }
 });
 

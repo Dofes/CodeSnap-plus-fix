@@ -941,6 +941,26 @@ body {
   cursor: pointer;
 }
 
+/* Spins while a large snapshot is being rendered */
+
+.shutter.busy {
+  -webkit-animation: shutter-spin 1s linear infinite;
+          animation: shutter-spin 1s linear infinite;
+  cursor: progress;
+}
+
+@-webkit-keyframes shutter-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes shutter-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .size-test {
   font-family: var(--vscode-editor-font-family) !important;
   font-size: calc(var(--vscode-editor-font-size) * 1px) !important;

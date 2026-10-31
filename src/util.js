@@ -2,7 +2,7 @@
 
 const vscode = require('vscode');
 const path = require('path');
-const { readFile, writeFile } = require('fs').promises;
+const { readFile } = require('fs').promises;
 
 const readHtml = async (htmlPath, panel) =>
   (await readFile(htmlPath, 'utf-8'))
@@ -28,4 +28,4 @@ const getSettings = (group, keys) => {
   }, {});
 };
 
-module.exports = { readHtml, writeFile, getSettings };
+module.exports = { readHtml, getSettings };

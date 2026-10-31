@@ -1,17 +1,17 @@
 {
-  "name": "codesnap-plus-fix",
-  "displayName": "CodeSnap-plus-fix",
-  "description": "📸 Take beautiful screenshots of your code in VS Code! And you can hightlight the line just by click.",
-  "version": "1.0.1",
+  "name": "codesnap-plus-fast",
+  "displayName": "CodeSnap Plus Fast",
+  "description": "📸 Take beautiful screenshots of your code in VS Code, fast even for very long snippets. Click a line number to highlight the line.",
+  "version": "1.1.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/eugenejeonme/CodeSnap-plus-fix"
+    "url": "https://github.com/Dofes/CodeSnap-plus-fix"
   },
-  "publisher": "eugenejeon",
+  "publisher": "dofes",
   "icon": "icon.png",
   "license": "MIT",
   "engines": {
-    "vscode": "^1.52.0"
+    "vscode": "^1.57.0"
   },
   "keywords": [
     "screenshot",
@@ -21,6 +21,7 @@
     "share",
     "polacode",
     "carbon",
+    "codesnap",
     "codesnap-plus-fix"
   ],
   "categories": [
@@ -34,7 +35,7 @@
     "commands": [
       {
         "command": "codesnap-plus-fix.start",
-        "title": "CodeSnap-plus-fix 📸"
+        "title": "CodeSnap Plus Fast 📸"
       }
     ],
     "menus": {
@@ -156,8 +157,5 @@
     "tailwindcss": "^3.1.8",
     "typescript": "^4.2.4",
     "vscode-test": "^1.5.2"
-  },
-  "dependencies": {
-    "dom-to-image-even-more": "^1.0.4"
   }
 }

@@ -9,6 +9,6 @@
   },
   "globals": {
     "acquireVsCodeApi": true,
-    "domtoimage": true
+    "CompressionStream": true
   }
 }
