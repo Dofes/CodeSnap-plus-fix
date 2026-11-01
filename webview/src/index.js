@@ -1,6 +1,6 @@
 import { $, $$, setVar, throttle } from './util.js';
 import { pasteCode } from './code.js';
-import { takeSnap } from './snap.js';
+import { takeSnap, warmUp } from './snap.js';
 
 const navbarNode = $('#navbar');
 const windowControlsNode = $('#window-controls');
@@ -116,6 +116,7 @@ window.addEventListener('message', ({ data: { type, ...cfg } }) => {
     }
 
     document.execCommand('paste');
+    requestIdleCallback(() => warmUp().catch(() => undefined));
   }
 });
 

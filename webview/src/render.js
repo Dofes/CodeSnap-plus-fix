@@ -132,14 +132,16 @@ export const loadSvgImage = async (svg) => {
   return img;
 };
 
-// Chromium refuses canvases above 32767px per side or 268M pixels in total, and large
-// readbacks are slow, so the image is painted in bands of at most this many pixels.
-const MAX_TILE_PIXELS = 1 << 24;
+// Chromium refuses canvases above 32767px per side or 268M pixels in total, so the image is
+// painted in bands of at most this many pixels. Small bands also let the workers start
+// compressing early and in parallel.
+const MAX_TILE_PIXELS = 1 << 22;
 const MAX_TILE_SIDE = 8192;
 
 /**
- * Paints `img` at `scale` band by band. `onBand(rgba, width, rows)` receives each band's
- * pixels (full image width, top to bottom) and may return a promise to apply backpressure.
+ * Paints `img` at `scale` band by band. `onBand(tiles, width, rows)` receives each band (full
+ * image width, top to bottom) as tiles of at most MAX_TILE_SIDE columns, `{ rgba, x }`, and
+ * may return a promise to apply backpressure.
  */
 export const rasterize = async (img, { width, height, scale }, onBand) => {
   const fullWidth = Math.ceil(width * scale);
@@ -152,31 +154,19 @@ export const rasterize = async (img, { width, height, scale }, onBand) => {
 
   for (let y = 0; y < fullHeight; y += bandHeight) {
     const rows = Math.min(bandHeight, fullHeight - y);
-    let band;
+    const tiles = [];
     for (let x = 0; x < fullWidth; x += tileWidth) {
       const cols = Math.min(tileWidth, fullWidth - x);
       // A fresh canvas per tile: Chromium moves a canvas that is read back repeatedly from
       // the GPU to the CPU, which makes painting text several times slower.
-      const canvas = document.createElement('canvas');
-      canvas.width = cols;
-      canvas.height = rows;
-      const ctx = canvas.getContext('2d');
+      const ctx = new OffscreenCanvas(cols, rows).getContext('2d');
       // Drawing only the tile's source rectangle lets Chromium skip painting the rest of the
       // SVG, which otherwise makes every tile cost as much as the whole snippet.
       ctx.drawImage(img, x / scale, y / scale, cols / scale, rows / scale, 0, 0, cols, rows);
-      const tile = ctx.getImageData(0, 0, cols, rows).data;
-      // Release the backing store now rather than whenever the canvas is collected.
-      canvas.width = canvas.height = 0;
-      if (cols === fullWidth) {
-        band = tile;
-      } else {
-        band = band || new Uint8ClampedArray(fullWidth * rows * 4);
-        for (let r = 0; r < rows; r++) {
-          band.set(tile.subarray(r * cols * 4, (r + 1) * cols * 4), (r * fullWidth + x) * 4);
-        }
-      }
+      // Reading back here is faster than in workers, which all wait on the same GPU process.
+      tiles.push({ rgba: ctx.getImageData(0, 0, cols, rows).data, x });
     }
-    await onBand(band, fullWidth, rows);
+    await onBand(tiles, fullWidth, rows);
   }
   return { width: fullWidth, height: fullHeight };
 };

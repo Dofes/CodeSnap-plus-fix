@@ -1,6 +1,6 @@
 import { $, redraw, once } from './util.js';
 import { nodeToSvg, loadSvgImage, rasterize } from './render.js';
-import { createPngEncoder } from './png.js';
+import { createPngEncoder, preparePngEncoder } from './png.js';
 
 const vscode = acquireVsCodeApi();
 const windowNode = $('#window');
@@ -27,6 +27,7 @@ export const cameraFlashAnimation = async () => {
 const snapTarget = (config) => (config.target === 'container' ? snippetContainerNode : windowNode);
 
 const renderPng = async (config) => {
+  preparePngEncoder();
   const target = snapTarget(config);
   const overrides =
     config.transparentBackground || config.target === 'window'
@@ -37,11 +38,29 @@ const renderPng = async (config) => {
     extraCss: '#window { resize: none !important; }'
   });
   const img = await loadSvgImage(svg);
-  const encoder = createPngEncoder(Math.ceil(width * SNAP_SCALE), Math.ceil(height * SNAP_SCALE));
-  await rasterize(img, { width, height, scale: SNAP_SCALE }, (rgba, _, rows) =>
-    encoder.addRows(rgba, rows)
+  const encoder = await createPngEncoder(
+    Math.ceil(width * SNAP_SCALE),
+    Math.ceil(height * SNAP_SCALE)
+  );
+  await rasterize(img, { width, height, scale: SNAP_SCALE }, (tiles, _, rows) =>
+    encoder.addBand(tiles, rows)
   );
   return encoder.finish();
+};
+
+let warmedUp = false;
+
+// Pays Chromium's one-off costs (GPU canvas, code font, workers) before the first snapshot by
+// painting a single line.
+export const warmUp = async () => {
+  const line = $('#snippet .line');
+  if (warmedUp || !line) return;
+  warmedUp = true;
+  preparePngEncoder();
+  const { svg, width, height } = await nodeToSvg(line);
+  const ctx = new OffscreenCanvas(width, height).getContext('2d');
+  ctx.drawImage(await loadSvgImage(svg), 0, 0);
+  ctx.getImageData(0, 0, 1, 1);
 };
 
 const toBytes = async (png) => new Uint8Array(await (await png).arrayBuffer());

@@ -8,7 +8,7 @@ And you can hightlight the line just by click the line number.
 
 ## What's new in this fork
 
-- **Much faster copy and save.** The image is rendered from the page's own stylesheet instead of copying every computed style onto every element, so a 300-line snippet takes about half a second instead of over 20 seconds.
+- **Much faster copy and save.** The image is rendered from the page's own stylesheet instead of copying every computed style onto every element, and the PNG is compressed on several threads at once. A 300-line snippet takes about 0.15 seconds instead of over 20, and 1,000 lines take about a quarter of a second.
 - **Long snippets work.** Images are painted in bands and encoded as a streaming PNG, so they are no longer limited by the browser's canvas size. Thousands of lines can be copied and saved.
 - **The save dialog opens right away**, and the image is rendered while you pick a file name.
 - **Smaller PNG files**, about half the size of before.

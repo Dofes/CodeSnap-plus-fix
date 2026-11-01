@@ -2,7 +2,7 @@
   "name": "codesnap-plus-fast",
   "displayName": "CodeSnap Plus Fast",
   "description": "📸 Take beautiful screenshots of your code in VS Code, fast even for very long snippets. Click a line number to highlight the line.",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/Dofes/CodeSnap-plus-fix"
